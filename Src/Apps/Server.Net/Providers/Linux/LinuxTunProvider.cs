@@ -1,24 +1,137 @@
-﻿using PacketDotNet;
+﻿using Microsoft.Win32.SafeHandles;
+using PacketDotNet;
+using System.Buffers;
+using System.Runtime.InteropServices;
+using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using VpnHood.Core.Common.Logging;
 using VpnHood.Core.Server.Abstractions;
+using VpnHood.Core.Tunneling;
 
 namespace VpnHood.App.Server.Providers.Linux;
 
-internal class LinuxTunProvider : ITunProvider
+internal class LinuxTunProvider : ITunProvider, IDisposable
 {
+    private readonly ILogger<LinuxTunProvider> _logger;
+    public event EventHandler<IPPacket>? OnPacketReceived;
 
-    public LinuxTunProvider Create()
-    { 
-        throw new NotImplementedException();
+    private readonly FileStream _deviceStream;
+    private const string DefaultDeviceName = "tun0";
+    private const string DefaultDevicePath = "/dev/net/tun";
+    private bool _disposed;
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
+
+    public LinuxTunProvider(ILogger<LinuxTunProvider> logger)
+    {
+        _logger = logger;
+        var tunFd = OpenTunDevice(DefaultDeviceName, DefaultDevicePath);
+        _deviceStream = new FileStream(new SafeFileHandle(tunFd, ownsHandle: true), FileAccess.ReadWrite);
+
+        // Start listening for packets asynchronously
+        Task.Run(StartListening);
     }
 
-    public event EventHandler<IPPacket>? OnPacketReceived;
-    public Task SendPacket(IPPacket ipPacket)
+    public async Task SendPacket(IPPacket ipPacket)
     {
-        throw new NotImplementedException();
+        if (_deviceStream == null)
+            throw new InvalidOperationException("TUN device is not initialized.");
+
+        var packetBytes = ipPacket.Bytes;
+        await _writeLock.WaitAsync();
+        try {
+            await _deviceStream.WriteAsync(packetBytes, 0, packetBytes.Length);
+            Console.WriteLine("Packet sent.");
+        }
+        finally {
+            _writeLock.Release();
+        }
+    }
+
+    private async Task StartListening()
+    {
+        var buffer = new byte[0xffff]; // MTU size
+        while (true) {
+            var bytesRead = await _deviceStream.ReadAsync(buffer, 0, buffer.Length);
+
+            if (bytesRead == 0)
+                break;
+
+            if (bytesRead <= 20)
+                continue; // Minimum IP header size
+
+            try {
+                var ipPacket = Packet.ParsePacket(LinkLayers.Raw, buffer).Extract<IPPacket>();
+                OnPacketReceived?.Invoke(this, ipPacket);
+            }
+            catch (Exception ex) {
+                _logger.LogError(GeneralEventId.Packet, ex, "TUN can not parse the packet.");
+            }
+        }
+    }
+
+    private int OpenTunDevice(string deviceName, string devicePath)
+    {
+        // ReSharper disable once InconsistentNaming
+        const int IFF_TUN = 0x0001;  // TUN device (Layer 3)
+        // ReSharper disable once InconsistentNaming
+        const int IFF_NO_PI = 0x1000; // No packet information
+        // ReSharper disable once IdentifierTypo
+        // ReSharper disable once InconsistentNaming
+        const int TUNSETIFF = 0x400454ca; // ioctl request code for TUN device
+        // ReSharper disable once IdentifierTypo
+        // ReSharper disable once InconsistentNaming
+        const int ORdwr = 0x0002; // Open for read/write
+
+        // Open the TUN device file
+        var fd = Syscall.open(devicePath, ORdwr);
+        if (fd < 0)
+            throw new InvalidOperationException("Failed to open TUN device.");
+
+        // Configure the device
+        var ifr = new Ifreq {
+            ifr_name = deviceName,
+            ifr_flags = IFF_TUN | IFF_NO_PI
+        };
+
+        var ioctlResult = Syscall.ioctl(fd, TUNSETIFF, ref ifr);
+        if (ioctlResult < 0) {
+            Syscall.close(fd);
+            throw new Exception($"Could not configure TUN device. LastError: {Marshal.GetLastWin32Error()}. IoctlResult: {ioctlResult} ");
+        }
+
+        return fd;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    private struct Ifreq
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+        public string ifr_name; // Interface name
+        public ushort ifr_flags; // Flags (e.g., IFF_TUN)
+    }
+
+    private static class Syscall
+    {
+        [DllImport("libc", SetLastError = true)]
+        public static extern int open(string pathname, int flags);
+
+        [DllImport("libc", SetLastError = true)]
+        public static extern int ioctl(int fd, uint request, ref Ifreq ifr);
+
+        [DllImport("libc", SetLastError = true)]
+        public static extern int close(int fd);
     }
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        _deviceStream.Dispose();
+        if (_deviceStream.SafeFileHandle is { IsInvalid: false })
+            Syscall.close(_deviceStream.SafeFileHandle.DangerousGetHandle().ToInt32());
     }
 }
+
