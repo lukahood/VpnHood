@@ -2,23 +2,28 @@
 using PacketDotNet;
 using System.Buffers;
 using System.Runtime.InteropServices;
+using System.Threading.Channels;
+using Microsoft.Extensions.Logging;
+using VpnHood.Core.Common.Logging;
 using VpnHood.Core.Server.Abstractions;
+using VpnHood.Core.Tunneling;
 
 namespace VpnHood.App.Server.Providers.Linux;
 
 internal class LinuxTunProvider : ITunProvider, IDisposable
 {
+    private readonly ILogger<LinuxTunProvider> _logger;
     public event EventHandler<IPPacket>? OnPacketReceived;
 
     private readonly FileStream _deviceStream;
     private const string DefaultDeviceName = "tun0";
     private const string DefaultDevicePath = "/dev/net/tun";
     private bool _disposed;
-    private static readonly ArrayPool<byte> BufferPool = ArrayPool<byte>.Shared;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public LinuxTunProvider()
+    public LinuxTunProvider(ILogger<LinuxTunProvider> logger)
     {
+        _logger = logger;
         var tunFd = OpenTunDevice(DefaultDeviceName, DefaultDevicePath);
         _deviceStream = new FileStream(new SafeFileHandle(tunFd, ownsHandle: true), FileAccess.ReadWrite);
 
@@ -44,19 +49,23 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
 
     private async Task StartListening()
     {
-        var buffer = BufferPool.Rent(1500); // MTU size
-        try {
-            while (true) {
-                var bytesRead = await _deviceStream.ReadAsync(buffer, 0, buffer.Length);
-                if (bytesRead > 20) // Minimum IP header size
-                {
-                    var ipPacket = Packet.ParsePacket(LinkLayers.Raw, buffer).Extract<IPPacket>();
-                    OnPacketReceived?.Invoke(this, ipPacket);
-                }
+        var buffer = new byte[0xffff]; // MTU size
+        while (true) {
+            var bytesRead = await _deviceStream.ReadAsync(buffer, 0, buffer.Length);
+
+            if (bytesRead == 0)
+                break;
+
+            if (bytesRead <= 20)
+                continue; // Minimum IP header size
+
+            try {
+                var ipPacket = Packet.ParsePacket(LinkLayers.Raw, buffer).Extract<IPPacket>();
+                OnPacketReceived?.Invoke(this, ipPacket);
             }
-        }
-        finally {
-            BufferPool.Return(buffer);
+            catch (Exception ex) {
+                _logger.LogError(GeneralEventId.Packet, ex, "TUN can not parse the packet.");
+            }
         }
     }
 
@@ -86,9 +95,8 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
 
         var ioctlResult = Syscall.ioctl(fd, TUNSETIFF, ref ifr);
         if (ioctlResult < 0) {
-            Console.WriteLine($"Error configuring TUN device: {Marshal.GetLastWin32Error()}");
             Syscall.close(fd);
-            return -1;
+            throw new Exception($"Could not configure TUN device. LastError: {Marshal.GetLastWin32Error()}. IoctlResult: {ioctlResult} ");
         }
 
         return fd;
@@ -116,30 +124,14 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
 
     public void Dispose()
     {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-    }
+        if (_disposed)
+            return;
 
-    protected virtual void Dispose(bool disposing)
-    {
-        if (!_disposed) {
-            if (disposing) {
-                // Dispose managed resources
-                _deviceStream.Dispose();
-            }
+        _disposed = true;
 
-            // Dispose unmanaged resources (e.g., close the TUN device)
-            if (_deviceStream.SafeFileHandle is { IsInvalid: false }) {
-                Syscall.close(_deviceStream.SafeFileHandle.DangerousGetHandle().ToInt32());
-            }
-
-            _disposed = true;
-        }
-    }
-
-    ~LinuxTunProvider()
-    {
-        Dispose(false);
+        _deviceStream.Dispose();
+        if (_deviceStream.SafeFileHandle is { IsInvalid: false })
+            Syscall.close(_deviceStream.SafeFileHandle.DangerousGetHandle().ToInt32());
     }
 }
 
