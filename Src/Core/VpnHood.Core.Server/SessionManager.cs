@@ -507,6 +507,4 @@ public class SessionManager : IAsyncDisposable, IJob
         await Sync(force: true);
         await Task.WhenAll(Sessions.Values.Select(x => x.DisposeAsync().AsTask())).VhConfigureAwait();
     }
-
-
 }

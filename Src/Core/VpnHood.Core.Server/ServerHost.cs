@@ -31,9 +31,9 @@ public class ServerHost : IAsyncDisposable, IJob
     private readonly List<Task> _tcpListenerTasks = [];
     private bool _disposed;
 
-    public const int MaxProtocolVersion =  6;
-    public const int MinProtocolVersion =  4;
-    public int MinClientProtocolVersion { get; set; }  = MinProtocolVersion; // used for tests
+    public const int MaxProtocolVersion = 6;
+    public const int MinProtocolVersion = 4;
+    public int MinClientProtocolVersion { get; set; } = MinProtocolVersion; // used for tests
     public JobSection JobSection { get; } = new(TimeSpan.FromMinutes(5));
     public bool IsIpV6Supported { get; set; }
     public IpRange[]? NetFilterPacketCaptureIncludeIpRanges { get; set; }
@@ -265,7 +265,7 @@ public class ServerHost : IAsyncDisposable, IJob
                 throw new UnauthorizedAccessException();
 
             // read api key
-            if (protocolVersion <= 5 ) {
+            if (protocolVersion <= 5) {
                 if (!CheckApiKeyAuthorization(authorization)) {
                     // process hello without api key
                     if (authorization != "ApiKey")
@@ -285,7 +285,7 @@ public class ServerHost : IAsyncDisposable, IJob
                         streamId, ReuseClientStream) {
                         RequireHttpResponse = false
                     };
-                
+
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                 case BinaryStreamType.Standard when protocolVersion == 6:
                     return new TcpClientStream(tcpClient,
@@ -547,10 +547,10 @@ public class ServerHost : IAsyncDisposable, IJob
 
         // report in session log
         VhLogger.Instance.LogInformation(GeneralEventId.SessionTrack,
-            "SessionId: {SessionId-5}\t{Mode,-5}\tTokenId: {TokenId}\tClientCount: {ClientCount,-3}\tClientId: {ClientId}\tClientIp: {ClientIp-15}\tVersion: {Version}\tOS: {OS}",
+            "SessionId: {SessionId-5}\t{Mode,-5}\tTokenId: {TokenId}\tClientCount: {ClientCount,-3}\tClientId: {ClientId}\tClientIp: {ClientIp-15}\tVirtualIp: {VirtualIp-15}\tVersion: {Version}\tOS: {OS}",
             VhLogger.FormatSessionId(session.SessionId), "New", VhLogger.FormatId(request.TokenId),
             session.SessionResponse.AccessUsage?.ActiveClientCount, VhLogger.FormatId(request.ClientInfo.ClientId),
-            clientIp, request.ClientInfo.ClientVersion,
+            clientIp, session.VirtualIp, request.ClientInfo.ClientVersion,
             UserAgentParser.GetOperatingSystem(request.ClientInfo.UserAgent));
 
         // report in track log

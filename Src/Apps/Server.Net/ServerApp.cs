@@ -249,7 +249,8 @@ public class ServerApp : IDisposable
                 NetConfigurationProvider = configurationProvider,
                 SwapMemoryProvider = swapMemoryProvider,
                 StoragePath = InternalStoragePath,
-                Config = AppSettings.ServerConfig
+                Config = AppSettings.ServerConfig,
+                VirtualIpNetwork = IpNetwork.Parse("10.10.0.0/16")
             });
 
             // Command listener
@@ -266,10 +267,16 @@ public class ServerApp : IDisposable
     private ITunProvider? CreateTunProvider()
     {
         try {
-            //return RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            //    ? LinuxTunProvider.Create()
-            //    : null;
-            return null;
+            using var loggerFactory = LoggerFactory.Create(builder => {
+                builder.AddConsole(); // Output logs to the console
+            });
+
+            // Create a logger for LinuxTunProvider
+
+            var logger = loggerFactory.CreateLogger<LinuxTunProvider>();
+            return RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+                ? new LinuxTunProvider(logger)
+                : null;
         }
         catch (Exception ex) {
             VhLogger.Instance.LogError(ex, "Could not create TunProvider!");

@@ -394,6 +394,9 @@ public class VpnHoodClient : IJob, IAsyncDisposable
                 // ReSharper disable once ForCanBeConvertedToForeach
                 for (var i = 0; i < e.IpPackets.Count; i++) {
                     var ipPacket = e.IpPackets[i];
+
+                    if (ipPacket.Protocol == ProtocolType.Tcp)
+                        Console.WriteLine($"packet on capture inbound length: {ipPacket.TotalLength},data: {ipPacket}");
                     if (_disposed) return;
                     var isIpV6 = ipPacket.DestinationAddress.IsV6();
                     var udpPacket = ipPacket.Protocol == ProtocolType.Udp ? ipPacket.Extract<UdpPacket>() : null;
@@ -495,7 +498,7 @@ public class VpnHoodClient : IJob, IAsyncDisposable
                     _ = ManageDatagramChannels(_cancellationTokenSource.Token);
 
                 if (tunnelPackets.Count > 0)
-                    Tunnel.SendPackets(tunnelPackets, _cancellationTokenSource.Token);
+                    Tunnel.SendPackets(tunnelPackets, false, _cancellationTokenSource.Token);
 
                 if (passthruPackets.Count > 0)
                     _packetCapture.SendPacketToOutbound(passthruPackets);

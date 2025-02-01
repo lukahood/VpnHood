@@ -243,11 +243,21 @@ public class Tunnel : IJob, IAsyncDisposable
         EnqueuePackets(ipPackets);
     }
 
-    public void SendPackets(IList<IPPacket> ipPackets, CancellationToken cancellationToken)
+    public void SendPackets(IList<IPPacket> ipPackets, bool dropIfFull, CancellationToken cancellationToken)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(Tunnel));
-        WaitForQueue(cancellationToken);
+
+        if (!dropIfFull)
+            WaitForQueue(cancellationToken);
+        else if (_packetQueue.Count > MaxQueueLength)
+            return;
+
         EnqueuePackets(ipPackets);
+    }
+
+    public void SendPacket(IPPacket ipPacket, bool dropIfFull, CancellationToken cancellationToken)
+    {
+        SendPackets([ipPacket], dropIfFull, cancellationToken);
     }
 
     private async Task WaitForQueueAsync(CancellationToken cancellationToken)
@@ -340,7 +350,7 @@ public class Tunnel : IJob, IAsyncDisposable
                         }
 
                         // drop packet if it is larger than _mtuNoFragment
-                        if (packetSize > MtuNoFragment && ipPacket is IPv4Packet { FragmentFlags: 2 }) {
+                        if (packetSize > MtuNoFragment + 70 && ipPacket is IPv4Packet { FragmentFlags: 2 }) {
                             VhLogger.Instance.LogWarning(
                                 $"Packet dropped! There is no channel to support this non fragmented packet. NoFragmented MTU: {MtuNoFragment}, Packet: {PacketUtil.Format(ipPacket)}");
                             _packetQueue.TryDequeue(out ipPacket);

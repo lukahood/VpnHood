@@ -1,21 +1,19 @@
 ﻿using Microsoft.Win32.SafeHandles;
 using PacketDotNet;
-using System.Buffers;
 using System.Runtime.InteropServices;
-using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using VpnHood.Core.Common.Logging;
 using VpnHood.Core.Server.Abstractions;
 using VpnHood.Core.Tunneling;
 
 namespace VpnHood.App.Server.Providers.Linux;
 
-internal class LinuxTunProvider : ITunProvider, IDisposable
+internal class LinuxTunProvider : ITunProvider
 {
     private readonly ILogger<LinuxTunProvider> _logger;
     public event EventHandler<IPPacket>? OnPacketReceived;
 
-    private readonly FileStream _deviceStream;
+    private readonly FileStream _tunReader;
+    private readonly FileStream _tunWriter;
     private const string DefaultDeviceName = "tun0";
     private const string DefaultDevicePath = "/dev/net/tun";
     private bool _disposed;
@@ -25,22 +23,24 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
     {
         _logger = logger;
         var tunFd = OpenTunDevice(DefaultDeviceName, DefaultDevicePath);
-        _deviceStream = new FileStream(new SafeFileHandle(tunFd, ownsHandle: true), FileAccess.ReadWrite);
+        _tunReader = new FileStream(new SafeFileHandle(tunFd, ownsHandle: true), FileAccess.Read);
+        _tunWriter = new FileStream(new SafeFileHandle(tunFd, ownsHandle: true), FileAccess.Write);
 
         // Start listening for packets asynchronously
-        Task.Run(StartListening);
+        _logger.LogInformation("Starting TUN listener...");
+        _ = StartListening();
     }
 
     public async Task SendPacket(IPPacket ipPacket)
     {
-        if (_deviceStream == null)
+        if (_tunWriter == null)
             throw new InvalidOperationException("TUN device is not initialized.");
 
         var packetBytes = ipPacket.Bytes;
         await _writeLock.WaitAsync();
         try {
-            await _deviceStream.WriteAsync(packetBytes, 0, packetBytes.Length);
-            Console.WriteLine("Packet sent.");
+            Console.WriteLine($"packet aaaaa: {ipPacket.TotalLength}");
+            await _tunWriter.WriteAsync(packetBytes, 0, packetBytes.Length);
         }
         finally {
             _writeLock.Release();
@@ -51,12 +51,12 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
     {
         var buffer = new byte[0xffff]; // MTU size
         while (true) {
-            var bytesRead = await _deviceStream.ReadAsync(buffer, 0, buffer.Length);
+            var bytesRead = await _tunReader.ReadAsync(buffer, 0, buffer.Length);
 
             if (bytesRead == 0)
                 break;
 
-            if (bytesRead <= 20)
+            if (bytesRead < 20)
                 continue; // Minimum IP header size
 
             try {
@@ -129,9 +129,13 @@ internal class LinuxTunProvider : ITunProvider, IDisposable
 
         _disposed = true;
 
-        _deviceStream.Dispose();
-        if (_deviceStream.SafeFileHandle is { IsInvalid: false })
-            Syscall.close(_deviceStream.SafeFileHandle.DangerousGetHandle().ToInt32());
+        _tunWriter.Dispose();
+        if (_tunWriter.SafeFileHandle is { IsInvalid: false })
+            Syscall.close(_tunWriter.SafeFileHandle.DangerousGetHandle().ToInt32());
+
+        _tunReader.Dispose();
+        if (_tunReader.SafeFileHandle is { IsInvalid: false })
+            Syscall.close(_tunReader.SafeFileHandle.DangerousGetHandle().ToInt32());
     }
 }
 

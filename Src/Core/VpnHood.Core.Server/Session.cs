@@ -465,8 +465,8 @@ public class Session : IAsyncDisposable
 
         public override Task SendPacket(IPPacket ipPacket)
         {
-            if (tunProvider != null) {
-                PacketUtil.UpdateIpChecksum(ipPacket);
+            if (tunProvider != null && ipPacket.Protocol != ProtocolType.Udp) {
+                PacketUtil.UpdateIpPacket(ipPacket);
                 tunProvider.SendPacket(ipPacket);
                 return Task.CompletedTask;
             }
