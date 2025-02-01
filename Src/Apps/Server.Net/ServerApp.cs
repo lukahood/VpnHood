@@ -244,7 +244,7 @@ public class ServerApp : IDisposable
             // run server
             _vpnHoodServer = new VpnHoodServer(AccessManager, new ServerOptions {
                 Tracker = _tracker,
-                TunProvider = CreateTunProvider(),
+                TunProvider = await CreateTunProvider(),
                 SystemInfoProvider = systemInfoProvider,
                 NetConfigurationProvider = configurationProvider,
                 SwapMemoryProvider = swapMemoryProvider,
@@ -264,18 +264,15 @@ public class ServerApp : IDisposable
         });
     }
 
-    private ITunProvider? CreateTunProvider()
+    private async Task<ITunProvider?> CreateTunProvider()
     {
         try {
             using var loggerFactory = LoggerFactory.Create(builder => {
                 builder.AddConsole(); // Output logs to the console
             });
 
-            // Create a logger for LinuxTunProvider
-
-            var logger = loggerFactory.CreateLogger<LinuxTunProvider>();
             return RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-                ? new LinuxTunProvider(logger)
+                ? await LinuxTunProvider.Create(VhLogger.Instance)
                 : null;
         }
         catch (Exception ex) {

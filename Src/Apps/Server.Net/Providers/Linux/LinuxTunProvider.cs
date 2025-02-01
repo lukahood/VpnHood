@@ -4,12 +4,13 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using VpnHood.Core.Server.Abstractions;
 using VpnHood.Core.Tunneling;
+using System.Diagnostics;
 
 namespace VpnHood.App.Server.Providers.Linux;
 
 internal class LinuxTunProvider : ITunProvider
 {
-    private readonly ILogger<LinuxTunProvider> _logger;
+    private readonly ILogger _logger;
     public event EventHandler<IPPacket>? OnPacketReceived;
 
     private readonly FileStream _tunReader;
@@ -19,7 +20,7 @@ internal class LinuxTunProvider : ITunProvider
     private bool _disposed;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
 
-    public LinuxTunProvider(ILogger<LinuxTunProvider> logger)
+    private LinuxTunProvider(ILogger logger)
     {
         _logger = logger;
         var tunFd = OpenTunDevice(DefaultDeviceName, DefaultDevicePath);
@@ -29,6 +30,14 @@ internal class LinuxTunProvider : ITunProvider
         // Start listening for packets asynchronously
         _logger.LogInformation("Starting TUN listener...");
         _ = StartListening();
+    }
+
+    public static async Task<LinuxTunProvider> Create(ILogger logger)
+    {
+        logger.LogInformation("Creating tun provider...");
+        await Init(logger);
+        var tunProvider = new LinuxTunProvider(logger);
+        return tunProvider;
     }
 
     public async Task SendPacket(IPPacket ipPacket)
@@ -136,6 +145,69 @@ internal class LinuxTunProvider : ITunProvider
         _tunReader.Dispose();
         if (_tunReader.SafeFileHandle is { IsInvalid: false })
             Syscall.close(_tunReader.SafeFileHandle.DangerousGetHandle().ToInt32());
+    }
+
+    private static async Task Init(ILogger logger)
+    {
+        const string tunInterface = "tun0";
+
+        // Detect main network interface
+        var mainInterface = GetMainNetworkInterface();
+        if (string.IsNullOrEmpty(mainInterface)) {
+            logger.LogError("No active network interface found.");
+            return;
+        }
+
+        // Remove existing tunnel interface
+        logger.LogTrace($"Removing existing {tunInterface} (if any)...");
+        await LinuxUtils.ExecuteCommandAsync($"ip tuntap del dev {tunInterface} mode tun");
+
+        // Enable IP forwarding
+        logger.LogTrace("Enabling IP forwarding.");
+        await LinuxUtils.ExecuteCommandAsync("sysctl -w net.ipv4.ip_forward=1");
+
+        // Configure NAT with iptables
+        logger.LogTrace("Setting up NAT with iptables...");
+        await LinuxUtils.ExecuteCommandAsync($"iptables -t nat -A POSTROUTING -s 10.10.0.0/8 -o {mainInterface} -j MASQUERADE");
+
+        // Create and configure tun interface
+        logger.LogTrace($"Creating tunnel interface {tunInterface}...");
+        await LinuxUtils.ExecuteCommandAsync($"ip tuntap add dev {tunInterface} mode tun");
+
+        logger.LogTrace($"Bringing up {tunInterface}...");
+        await LinuxUtils.ExecuteCommandAsync($"ip link set up dev {tunInterface}");
+
+        logger.LogTrace($"Assigning IP to {tunInterface}...");
+        await LinuxUtils.ExecuteCommandAsync($"ifconfig {tunInterface} 10.10.0.1 netmask 255.255.0.0 up");
+
+        logger.LogTrace("Tunnel interface configured successfully!");
+    }
+
+    private static string GetMainNetworkInterface()
+    {
+        try {
+            var psi = new ProcessStartInfo {
+                FileName = "/bin/bash",
+                Arguments = "-c \"ip route | grep default | awk '{print $5}'\"",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = new Process();
+            process.StartInfo = psi;
+            process.Start();
+            var output = process.StandardOutput.ReadToEnd().Trim();
+            process.WaitForExit();
+
+            if (!string.IsNullOrWhiteSpace(output))
+                return output;
+        }
+        catch (Exception ex) {
+            Console.WriteLine($"[ERROR] Failed to get main network interface: {ex.Message}");
+        }
+
+        return string.Empty;
     }
 }
 
