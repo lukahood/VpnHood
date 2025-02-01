@@ -1,4 +1,7 @@
-# v5.0.633
+# v5.1.647
+* Fix: Ping IPv6 
+
+# v5.1.642
 * Update: Improve ping performance
 
 # v5.0.629

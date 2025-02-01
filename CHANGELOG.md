@@ -1,5 +1,12 @@
 # Upcoming
-* Improve performance by reducing of memory allocation
+* Fix: IPv6 ping
+* Fix: Playing animation while login with Google
+* Fix: Connection is already in progress by changing the location
+
+# v5.0.645
+* Improve: Improve performance by reducing memory allocation.
+* Improve: Improve UI.
+* Feature: Add statistics page.
 
 # v5.0.635
 * Fix: Sign-out from account

@@ -17,13 +17,16 @@ public class HelloResponse : SessionResponse
     [JsonConverter(typeof(IPAddressConverter))]
     public IPAddress? VirtualIp { get; set; }
 
+    [JsonConverter(typeof(ArrayConverter<IpNetwork, IpNetworkConverter>))]
+    public IpNetwork[] PrivateIpNetworks { get; init; } = [];
+
     public int? UdpPort { get; set; }
-    public string ServerVersion { get; set; } = default!;
+    public string ServerVersion { get; set; } = null!;
     [Obsolete("Use MaxProtocolVersion and MinProtocolVersion")]
     public int ServerProtocolVersion { get; set; }
     public int MaxProtocolVersion { get; set; }
     public int MinProtocolVersion { get; set; }
-    public byte[] ServerSecret { get; set; } = default!;
+    public byte[] ServerSecret { get; set; } = null!;
     public ulong SessionId { get; set; }
     public byte[] SessionKey { get; set; } = [];
     public SessionSuppressType SuppressedTo { get; set; }
@@ -40,4 +43,5 @@ public class HelloResponse : SessionResponse
     public string[] ServerTags { get; set; } = [];
     public AccessInfo? AccessInfo { get; set; }
     public bool IsTunProviderSupported { get; set; }
+   
 }

@@ -1,6 +1,7 @@
 ﻿using System.Net;
 using VpnHood.Core.Common.Collections;
 using VpnHood.Core.Common.Messaging;
+using VpnHood.Core.Common.Utils;
 using VpnHood.Core.Server.Access;
 using VpnHood.Core.Server.Access.Configurations;
 using VpnHood.Core.Server.Access.Managers.FileAccessManagers;
@@ -23,6 +24,7 @@ public class TestAccessManager(string storagePath, FileAccessManagerOptions opti
     public Dictionary<string, IPEndPoint?> ServerLocations { get; set; } = new();
     public bool RejectAllAds { get; set; }
     public bool CanExtendPremiumByAd { get; set; }
+    public Dictionary<string, string> AccessCodes { get; set; } = new();
 
     public void AddAdData(string adData)
     {
@@ -92,6 +94,13 @@ public class TestAccessManager(string storagePath, FileAccessManagerOptions opti
                 return ret;
             }
 
+            // just accepted if it is null 
+            if (redirectEndPoint== null) {
+                sessionRequestEx.ServerLocation = null;
+                return ret;
+            }
+
+            // check if location is different
             if (!sessionRequestEx.HostEndPoint.Equals(redirectEndPoint)) {
                 ret.RedirectHostEndPoint = ServerLocations[sessionRequestEx.ServerLocation];
                 ret.ErrorCode = SessionErrorCode.RedirectHost;
@@ -99,5 +108,14 @@ public class TestAccessManager(string storagePath, FileAccessManagerOptions opti
         }
 
         return ret;
+    }
+
+    protected override string? GetAccessTokenIdFromAccessCode(string accessCode)
+    {
+        var validatedAccessCode = AccessCodeUtils.TryValidate(accessCode);
+        if (validatedAccessCode == null)
+            return null;
+
+        return AccessCodes.GetValueOrDefault(validatedAccessCode);
     }
 }

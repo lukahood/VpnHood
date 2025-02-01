@@ -10,6 +10,12 @@ public class SessionException : Exception
     {
         SessionResponse = sessionResponse;
         SessionResponse.ErrorMessage ??= MessageFromErrorCode(sessionResponse.ErrorCode);
+        
+        // ReSharper disable VirtualMemberCallInConstructor
+        Data.Add(nameof(SessionResponse.ErrorCode), SessionResponse.ErrorCode.ToString());
+        Data.Add(nameof(SessionResponse.SuppressedBy), SessionResponse.SuppressedBy.ToString());
+        Data.Add(nameof(SessionResponse.AccessKey), SessionResponse.AccessKey);
+        // ReSharper restore VirtualMemberCallInConstructor
     }
 
     public SessionException(SessionErrorCode errorCode, string? message = null)
@@ -36,6 +42,7 @@ public class SessionException : Exception
             SessionErrorCode.AccessLocked => "Access is locked.",
             SessionErrorCode.AccessTrafficOverflow => "Access traffic overflow occurred.",
             SessionErrorCode.NoServerAvailable => "No server is available.",
+            SessionErrorCode.PremiumLocation=> "The location is only available for premium accounts.",
             SessionErrorCode.AdError => "An advertisement error occurred.",
             SessionErrorCode.RewardedAdRejected => "The rewarded advertisement was rejected.",
             SessionErrorCode.Maintenance => "The system is under maintenance.",
@@ -47,12 +54,4 @@ public class SessionException : Exception
     }
 
     public SessionResponse SessionResponse { get; }
-
-    public virtual ApiError ToApiError()
-    {
-        var apiError = new ApiError(this);
-        apiError.Data.Add(nameof(SessionResponse.ErrorCode), SessionResponse.ErrorCode.ToString());
-        apiError.Data.Add(nameof(SessionResponse.SuppressedBy), SessionResponse.SuppressedBy.ToString());
-        return apiError;
-    }
 }

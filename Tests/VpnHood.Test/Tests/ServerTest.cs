@@ -73,7 +73,7 @@ public class ServerTest : TestBase
 
         // check usage when usage should be 0
         var sessionResponseEx = await accessManager.Session_Get(client.SessionId, client.HostTcpEndPoint!, null);
-        Assert.IsTrue(sessionResponseEx.AccessUsage!.Traffic.Received == 0);
+        Assert.IsTrue(sessionResponseEx.AccessUsage!.CycleTraffic.Received == 0);
 
         // lets do transfer
         await TestHelper.Test_Https();
@@ -81,7 +81,7 @@ public class ServerTest : TestBase
         // check usage should still not be 0 after interval
         await VhTestUtil.AssertEqualsWait(true, async () => {
             sessionResponseEx = await accessManager.Session_Get(client.SessionId, client.HostTcpEndPoint!, null);
-            return sessionResponseEx.AccessUsage!.Traffic.Received > 0;
+            return sessionResponseEx.AccessUsage!.CycleTraffic.Received > 0;
 
         });
     }
@@ -283,7 +283,7 @@ public class ServerTest : TestBase
             return client.State;
         });
         Assert.AreEqual(ClientState.Disposed, client.State);
-        Assert.AreEqual(SessionErrorCode.AccessError, client.SessionStatus.ErrorCode);
+        Assert.AreEqual(SessionErrorCode.AccessError, client.ConnectionInfo.ErrorCode);
     }
 
     [TestMethod]

@@ -88,21 +88,8 @@ public class SessionService : IDisposable, IJob
         return Sessions.TryGetValue(sessionId, out var session) ? session.TokenId : null;
     }
 
-    private static bool ValidateRequest(SessionRequestEx sessionRequestEx, AccessTokenData accessTokenData)
-    {
-        var encryptClientId = VhUtil.EncryptClientId(sessionRequestEx.ClientInfo.ClientId, accessTokenData.AccessToken.Secret);
-        return encryptClientId.SequenceEqual(sessionRequestEx.EncryptedClientId);
-    }
-
     public SessionResponseEx CreateSession(SessionRequestEx sessionRequestEx, AccessTokenData accessTokenData)
     {
-        // validate the request
-        if (!ValidateRequest(sessionRequestEx, accessTokenData))
-            return new SessionResponseEx {
-                ErrorCode = SessionErrorCode.AccessError,
-                ErrorMessage = "Could not validate the request."
-            };
-
         //increment session id using atomic operation
         Interlocked.Increment(ref _lastSessionId);
 
@@ -136,8 +123,7 @@ public class SessionService : IDisposable, IJob
             IsPremium = true, // token is always premium in File Access Manager
             MaxDeviceCount = accessTokenData.AccessToken.MaxClientCount,
             MaxTotalTraffic = accessTokenData.AccessToken.MaxTraffic,
-            DeviceCount = null, // not supported
-            Devices = null // not supported
+            DevicesSummary = null // not supported
         };
 
         if (responseEx.ErrorCode != SessionErrorCode.Ok)
@@ -211,7 +197,7 @@ public class SessionService : IDisposable, IJob
             MaxClientCount = accessToken.MaxClientCount,
 #pragma warning restore CS0618 // Type or member is obsolete
             MaxTraffic = accessToken.MaxTraffic,
-            Traffic = new Traffic(accessTokenData.Usage.Sent, accessTokenData.Usage.Received),
+            CycleTraffic = new Traffic(accessTokenData.Usage.Sent, accessTokenData.Usage.Received),
             IsPremium = true, // token is always premium in File Access Manager
         };
 
@@ -244,7 +230,7 @@ public class SessionService : IDisposable, IJob
 
             // check traffic
             if (accessUsage.MaxTraffic != 0 &&
-                accessUsage.Traffic.Total > accessUsage.MaxTraffic)
+                accessUsage.CycleTraffic.Total > accessUsage.MaxTraffic)
                 return new SessionResponseEx {
                     ErrorCode = SessionErrorCode.AccessTrafficOverflow,
                     ErrorMessage = "All traffic quota has been consumed.",

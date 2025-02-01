@@ -94,10 +94,12 @@ public class SessionManager : IAsyncDisposable, IJob
     }
 
     private readonly ConcurrentDictionary<IPAddress, Session> _virtualIps = new();
-    private IPAddress AllocateVirtualIp()
+    private IPAddress GetFreeVirtualIp()
     {
         // find the max virtual IP
         var ipAddress = VirtualIpRange.FirstIpAddress;
+        ipAddress = IPAddressUtil.Increment(ipAddress); // skip the first IP (10.0.0.0)
+        ipAddress = IPAddressUtil.Increment(ipAddress); // skip the second IP (10.0.0.1)
         while (!ipAddress.Equals(VirtualIpRange.LastIpAddress)) {
             if (!_virtualIps.ContainsKey(ipAddress))
                 return ipAddress;
@@ -120,7 +122,7 @@ public class SessionManager : IAsyncDisposable, IJob
 
             // allocate a new IP
             // todo: try to use virtual ip returned by sessionResponseEx
-            var virtualIp = AllocateVirtualIp();
+            var virtualIp = GetFreeVirtualIp();
 
             // create the session
             var session = new Session(

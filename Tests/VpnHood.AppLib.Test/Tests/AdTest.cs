@@ -16,13 +16,6 @@ namespace VpnHood.AppLib.Test.Tests;
 public class AdTest : TestBase
 {
     [TestMethod]
-    public async Task AFoo()
-    {
-        await Task.Delay(1);
-
-    }
-
-    [TestMethod]
     public async Task flexible_ad_should_not_close_session_if_load_ad_failed()
     {
         // create server
@@ -136,7 +129,7 @@ public class AdTest : TestBase
         // connect
         if (acceptAd) {
             await app.Connect(clientProfile.ClientProfileId, ConnectPlanId.PremiumByRewardedAd);
-            Assert.IsNull(app.State.SessionStatus?.AccessUsage?.ExpirationTime);
+            Assert.IsNull(app.State.SessionStatus?.SessionExpirationTime);
         }
         else {
             var ex = await Assert.ThrowsExceptionAsync<SessionException>(()=>app.Connect(clientProfile.ClientProfileId, ConnectPlanId.PremiumByRewardedAd));
@@ -171,12 +164,12 @@ public class AdTest : TestBase
         await app.Connect(clientProfile.ClientProfileId, ConnectPlanId.PremiumByTrial);
 
         // assert
-        Assert.IsNotNull(app.State.SessionStatus?.AccessUsage?.ExpirationTime);
+        Assert.IsNotNull(app.State.SessionStatus?.SessionExpirationTime);
 
         // show ad
         if (acceptAd) {
             await app.ExtendByRewardedAd(CancellationToken.None);
-            Assert.IsNull(app.State.SessionStatus?.AccessUsage?.ExpirationTime);
+            Assert.IsNull(app.State.SessionStatus?.SessionExpirationTime);
         }
         else {
             var ex = await Assert.ThrowsExceptionAsync<SessionException>(() => app.ExtendByRewardedAd(CancellationToken.None));
@@ -211,7 +204,7 @@ public class AdTest : TestBase
         await app.Connect(clientProfile.ClientProfileId, ConnectPlanId.PremiumByTrial);
 
         // asserts
-        Assert.AreEqual(canDetectInProcessPacket, app.State.SessionStatus?.AccessUsage?.CanExtendByRewardedAd);
+        Assert.AreEqual(canDetectInProcessPacket, app.State.SessionStatus?.CanExtendByRewardedAd);
     }
 
 
@@ -241,6 +234,6 @@ public class AdTest : TestBase
         await app.Connect(clientProfile.ClientProfileId, ConnectPlanId.PremiumByTrial);
 
         // asserts
-        Assert.AreEqual(enable, app.State.SessionStatus?.AccessUsage?.CanExtendByRewardedAd);
+        Assert.AreEqual(enable, app.State.SessionStatus?.CanExtendByRewardedAd);
     }
 }

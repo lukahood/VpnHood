@@ -14,8 +14,8 @@ public static class PacketUtil
 {
     public static void UpdateIpChecksum(IPPacket ipPacket)
     {
-        if (ipPacket is IPv6Packet ipV6Packet)
-            ipV6Packet.UpdateCalculatedValues();
+        if (ipPacket is IPv4Packet ipV4Packet)
+            ipV4Packet.UpdateIPChecksum();
 
         ipPacket.UpdateCalculatedValues();
     }
@@ -49,8 +49,8 @@ public static class PacketUtil
         if (ipPacket is IPv4Packet ipV4Packet) {
             ipV4Packet.UpdateIPChecksum();
         }
-        else if (ipPacket is IPv6Packet ipV6Packet) {
-            ipV6Packet.UpdateCalculatedValues();
+        else if (ipPacket is IPv6Packet) {
+            // do nothing
         }
         else {
             if (throwIfNotSupported)
@@ -126,6 +126,30 @@ public static class PacketUtil
         return ipPacket;
     }
 
+    public static IPPacket CreateIcmpV4Packet(IPAddress sourceAddress, IPAddress destinationAddress,
+        byte[] payloadData, bool calculateCheckSum = true)
+    {
+        // todo: not tested
+        // create packet for audience
+        var buffer = new byte[8 + payloadData.Length];
+        var icmpPacket = new IcmpV4Packet(new ByteArraySegment(buffer)) {
+            TypeCode = IcmpV4TypeCode.EchoRequest,
+            Data = payloadData
+        };
+
+        var ipPacket = new IPv4Packet(sourceAddress, destinationAddress) {
+            Protocol = ProtocolType.Icmp,
+            PayloadPacket = icmpPacket
+        };
+
+        if (calculateCheckSum) {
+            icmpPacket.UpdateIcmpChecksum();
+            ipPacket.UpdateIPChecksum();
+            ipPacket.UpdateCalculatedValues();
+        }
+
+        return ipPacket;
+    }
 
     public static IcmpV4Packet ExtractIcmp(IPPacket ipPacket)
     {
